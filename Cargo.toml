@@ -10,7 +10,12 @@ clap = { version = "3.2.5", features = ["derive", "cargo"] }
 derive_more = "0.99.17"
 directories = "4.0.1"
 eyre = "0.6.8"
+itertools = "0.10.3"
 nom = "7.1.1"
 nom-supreme = "0.8.0"
 serde = { version = "1.0.137", features = ["derive"] }
 toml = { version = "0.5.9", features = ["preserve_order"] }
+walkdir = "2.3.2"
+tracing = "0.1.35"
+tracing-appender = { version = "0.2.2", features = ["parking_lot"] }
+tracing-subscriber = { version = "0.3.11", features = ["tracing", "env-filter", "local-time"] }

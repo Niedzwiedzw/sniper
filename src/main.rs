@@ -1,6 +1,10 @@
-use std::path::{
-    Path,
-    PathBuf,
+use std::{
+    collections::HashMap,
+    path::{
+        Path,
+        PathBuf,
+    },
+    sync::Arc,
 };
 
 use clap::{
@@ -26,16 +30,19 @@ struct Cli {
     // #[clap(short, long, action = clap::ArgAction::Count)]
     // debug: u8,
     #[clap(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 }
 #[derive(Subcommand)]
 enum Commands {
-    // /// does testing things
-    // Test {
-    //     /// lists test values
-    //     #[clap(short, long, action)]
-    //     list: bool,
-    // },
+    /// renders the template onto the terminal
+    Fetch {
+        /// variables to fill the template with
+        #[clap(short, long)]
+        values: Vec<String>,
+        /// [key:] to find the template by
+        #[clap(short, long)]
+        key: String,
+    },
 }
 
 fn make_sure_dir_exists(path: &Path) -> Result<()> {
@@ -56,14 +63,23 @@ fn config_dir() -> Result<PathBuf> {
     make_sure_dir_exists(&config_dir)?;
     Ok(config_dir)
 }
+use itertools::Itertools;
+
 use serde::{
     Deserialize,
     Serialize,
 };
+
+use yasnippet_parser::{
+    Snippet,
+    TemplateMarker,
+};
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct SniperConfig {
+pub struct SniperConfig {
     snippet_directories: Vec<PathBuf>,
 }
+
 pub mod yasnippet_parser {
     use std::collections::HashMap;
 
@@ -124,7 +140,7 @@ pub mod yasnippet_parser {
     }
 
     #[derive(Debug, Clone)]
-    pub struct Text<'content>(&'content str);
+    pub struct Text<'content>(pub &'content str);
 
     #[derive(Debug, Clone, derive_more::From)]
     pub enum SnippetPart<'content> {
@@ -340,9 +356,143 @@ impl SniperConfig {
         }
     }
 }
+#[derive(Debug, Clone)]
+pub struct Sniper {
+    pub config: SniperConfig,
+}
 
+impl Sniper {
+    pub fn new(config: SniperConfig) -> Self {
+        Self { config }
+    }
+    fn all_files_in_path(path: &Path) -> Box<dyn Iterator<Item = PathBuf>> {
+        let paths = walkdir::WalkDir::new(path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path().to_owned())
+            .filter(|path| path.is_file())
+            .filter_map(|path| path.canonicalize().ok());
+        Box::new(paths)
+    }
+
+    fn all_snippet_paths<'sniper>(&'sniper self) -> Box<dyn Iterator<Item = PathBuf> + 'sniper> {
+        let paths = self
+            .config
+            .snippet_directories
+            .iter()
+            .map(|p| p.as_ref())
+            .flat_map(Self::all_files_in_path);
+        Box::new(paths)
+    }
+
+    fn find_snippet_path(&self, key: &str) -> Option<PathBuf> {
+        self.all_snippet_paths().into_iter().find_map(|path| {
+            match std::fs::read_to_string(&path)
+                .wrap_err_with(|| format!("reading snippet contents from [{path:?}]"))
+            {
+                Ok(content) => {
+                    tracing::debug!("succesfully read contents of [{path:?}]");
+                    match Snippet::parse(&content) {
+                        Ok(snippet) if snippet.header.key == key => Some(path),
+                        Err(e) => {
+                            tracing::warn!("parsing a snippet at [{path:?}] :: {e:?}");
+                            None
+                        }
+                        _ => None,
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("reading snippet content at [{path:?}] :: {e:?}");
+                    None
+                }
+            }
+        })
+    }
+
+    fn render_snippet(path: &Path, values: &[&str]) -> Result<String> {
+        let content = std::fs::read_to_string(path)
+            .wrap_err_with(|| format!("reading snippet at [{path:?}]"))?;
+        let snippet =
+            Snippet::parse(&content).wrap_err_with(|| format!("parsing snippet at [{path:?}]"))?;
+
+        let mut values = values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| ((index + 1) as u32, *value))
+            .collect::<HashMap<u32, &str>>();
+
+        let slots = snippet
+            .parts
+            .iter()
+            .filter_map(|part| match part {
+                yasnippet_parser::SnippetPart::Text(_) => None,
+                yasnippet_parser::SnippetPart::Template(TemplateMarker { key }) => Some(key),
+            })
+            .unique()
+            .filter_map(|key| {
+                values.remove(key).map(|value| (*key, value))
+                // .ok_or_else(|| eyre::eyre!("no value for key [${key}] found"))
+            })
+            .collect::<HashMap<u32, &str>>();
+        let rendered = snippet
+            .parts
+            .iter()
+            .filter(|part| match part {
+                yasnippet_parser::SnippetPart::Text(_) => true,
+                yasnippet_parser::SnippetPart::Template(TemplateMarker { key }) => *key != 0,
+            })
+            .map(|part| -> Result<&str> {
+                match part {
+                    yasnippet_parser::SnippetPart::Text(yasnippet_parser::Text(text)) => Ok(text),
+                    yasnippet_parser::SnippetPart::Template(TemplateMarker { key }) => slots
+                        .get(&key)
+                        .map(|v| *v)
+                        .ok_or_else(|| eyre::eyre!("no value for key [${key}] found")),
+                }
+            })
+            .collect::<Result<Vec<_>>>()?
+            .join("");
+        Ok(rendered)
+    }
+
+    pub fn find_and_render_snippet(&self, key: &str, values: &[&str]) -> Result<String> {
+        self.find_snippet_path(key)
+            .ok_or_else(|| eyre::eyre!("finding snippet using key [{key}]"))
+            .and_then(|path| Self::render_snippet(&path, values))
+            .wrap_err_with(|| format!("rendering snippet for key [{key}] and values [{values:?}]"))
+    }
+}
+use tracing_subscriber::{
+    fmt,
+    prelude::__tracing_subscriber_SubscriberExt,
+    EnvFilter,
+};
 fn main() -> Result<()> {
+    let logs_dir = config_dir()?.join("log");
+    let file_appender = tracing_appender::rolling::daily(&logs_dir, "log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let subscriber = tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(fmt::Layer::new().with_writer(std::io::stdout))
+        .with(
+            fmt::Layer::new()
+                .compact()
+                .with_ansi(false)
+                .with_writer(non_blocking),
+        );
+    tracing::subscriber::set_global_default(subscriber)
+        .context("Unable to set a global subscriber")?;
     let cli = Cli::parse();
     let config = SniperConfig::load()?;
+    let sniper = Sniper::new(config);
+    match cli.command {
+        Commands::Fetch { values, key } => {
+            let rendered = sniper.find_and_render_snippet(
+                &key,
+                &values.iter().map(|v| v.as_str()).collect::<Vec<_>>(),
+            )?;
+            println!("{rendered}");
+        }
+    };
     Ok(())
 }
