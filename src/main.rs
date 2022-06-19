@@ -4,7 +4,6 @@ use std::{
         Path,
         PathBuf,
     },
-    sync::Arc,
 };
 
 use clap::{
@@ -18,17 +17,6 @@ use eyre::{
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
-    // /// Optional name to operate on
-    // #[clap(value_parser)]
-    // name: Option<String>,
-
-    // /// Sets a custom config file
-    // #[clap(short, long, value_parser, value_name = "FILE")]
-    // config: Option<PathBuf>,
-
-    // /// Turn debugging information on
-    // #[clap(short, long, action = clap::ArgAction::Count)]
-    // debug: u8,
     #[clap(subcommand)]
     command: Commands,
 }
@@ -87,18 +75,11 @@ pub mod yasnippet_parser {
     use nom::{
         branch::alt,
         bytes::complete::{
-            take_until,
             take_until1,
             take_while,
         },
         combinator::opt,
-        error::{
-            ErrorKind,
-            ParseError,
-            VerboseError,
-        },
         multi::{
-            many0,
             many1,
             many_till,
         },
@@ -112,26 +93,9 @@ pub mod yasnippet_parser {
         IResult,
         Parser,
     };
-    use nom_supreme::final_parser::final_parser;
     use nom_supreme::parser_ext::ParserExt;
     use nom_supreme::tag::complete::tag;
-    // #[derive(Debug, PartialEq)]
-    // pub enum CustomError<I> {
-    //     MyError,
-    //     Nom(I, ErrorKind),
-    //     WhitespaceAt(I),
-    // }
 
-    // impl<I> ParseError<I> for CustomError<I> {
-    //     fn from_error_kind(input: I, kind: ErrorKind) -> Self {
-    //         CustomError::Nom(input, kind)
-    //     }
-
-    //     fn append(_: I, _: ErrorKind, other: Self) -> Self {
-    //         other
-    //     }
-    // }
-    // type Res<'input, T> = IResult<&'input str, T, CustomError<&'input str>>;
     type Res<'input, T> = IResult<&'input str, T, nom_supreme::error::ErrorTree<&'input str>>;
 
     #[derive(Debug, Clone)]
@@ -200,7 +164,6 @@ pub mod yasnippet_parser {
                 .parse("# name: vuesinglefile3\n")
                 .expect("key_value_entry works");
         }
-        // debug_assert!(.is_ok());
 
         let end_of_config = terminated(preceded(hash_prefix(), tag("--")), end_of_line())
             .context("header termination");
@@ -228,15 +191,13 @@ pub mod yasnippet_parser {
 
         Ok((content, TemplateMarker { key }.into()))
     }
+    #[allow(dead_code)]
     fn snippet_text_rest<'content>(content: &'content str) -> Res<'content, SnippetPart<'content>> {
         Ok(("", Text(content).into()))
     }
 
     fn snippet_text<'content>(content: &'content str) -> Res<'content, SnippetPart<'content>> {
-        let (content, text) = alt((
-            take_until1("$"),
-            // take_until("\n").context("no more template tags - drain to end of file"),
-        ))(content)?; // TODO: brackets mode of yasnippet
+        let (content, text) = alt((take_until1("$"),))(content)?; // TODO: brackets mode of yasnippet
 
         Ok((content, Text(text).into()))
     }
@@ -245,13 +206,11 @@ pub mod yasnippet_parser {
         alt((
             snippet_text.context("snippet_text"),
             template_marker.context("template_marker"),
-            // snippet_text_rest,
         ))(content)
     }
 
     impl<'content> Snippet<'content> {
         pub fn parse(content: &'content str) -> Result<Self> {
-            // let header = final_parser(header);
             let (content, header_values) =
                 header(content).map_err(|e| eyre::eyre!("parsing header:\n{e:#?}"))?;
             let header = Header {
@@ -429,10 +388,7 @@ impl Sniper {
                 yasnippet_parser::SnippetPart::Template(TemplateMarker { key }) => Some(key),
             })
             .unique()
-            .filter_map(|key| {
-                values.remove(key).map(|value| (*key, value))
-                // .ok_or_else(|| eyre::eyre!("no value for key [${key}] found"))
-            })
+            .filter_map(|key| values.remove(key).map(|value| (*key, value)))
             .collect::<HashMap<u32, &str>>();
         let rendered = snippet
             .parts
