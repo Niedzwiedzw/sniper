@@ -1,0 +1,53 @@
+---
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical  # part 1
+      borderless: true
+      split_size:
+        Fixed: 1
+      run:
+        plugin:
+          location: "zellij:tab-bar"
+    - direction: Vertical # part 2
+      body: true
+    - direction: Vertical # part 3
+      borderless: true
+      split_size:
+        Fixed: 2
+      run:
+        plugin:
+          location: "zellij:status-bar"
+session:
+  name: programming-sniper
+  attach: true
+
+tabs:
+  - direction: Horizontal
+    name: "tlumok"
+    parts:
+    - direction: Vertical
+      split_size:
+        Percent: 70
+      parts:
+        - direction: Horizontal
+          split_size: 
+            Percent: 20
+          run:
+            # command: {cmd: zsh, args: ["-c", "broot .; zsh"]}
+            plugin:
+              location: "zellij:strider"
+        - direction: Horizontal
+          
+          focus: true
+          split_size: 
+            Percent: 80
+          run:
+            command: {cmd: zsh, args: ["-c", "sleep 1; hx .; zsh"]}
+    - direction: Vertical
+      split_size:
+        Percent: 30
+      parts:
+      - direction: Horizontal
+        run:
+          command: {cmd: zsh, args: []}
