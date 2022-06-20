@@ -192,7 +192,7 @@ pub mod yasnippet_parser {
         Ok((content, params))
     }
 
-    fn template_marker<'content>(content: &'content str) -> Res<'content, SnippetPart<'content>> {
+    fn template_marker(content: &str) -> Res<SnippetPart> {
         let (content, key) = preceded(
             tag("$"),
             take_while(|c: char| c.is_numeric()).map_res(|s: &str| s.parse::<u32>()),
@@ -201,17 +201,17 @@ pub mod yasnippet_parser {
         Ok((content, TemplateMarker { key }.into()))
     }
     #[allow(dead_code)]
-    fn snippet_text_rest<'content>(content: &'content str) -> Res<'content, SnippetPart<'content>> {
+    fn snippet_text_rest(content: &str) -> Res<SnippetPart> {
         Ok(("", Text(content).into()))
     }
 
-    fn snippet_text<'content>(content: &'content str) -> Res<'content, SnippetPart<'content>> {
+    fn snippet_text(content: &str) -> Res<SnippetPart> {
         let (content, text) = alt((take_until1("$"),))(content)?; // TODO: brackets mode of yasnippet
 
         Ok((content, Text(text).into()))
     }
 
-    fn snippet_part<'content>(content: &'content str) -> Res<'content, SnippetPart<'content>> {
+    fn snippet_part(content: &str) -> Res<SnippetPart> {
         alt((
             snippet_text.context("snippet_text"),
             template_marker.context("template_marker"),
@@ -410,8 +410,8 @@ impl Sniper {
                 match part {
                     yasnippet_parser::SnippetPart::Text(yasnippet_parser::Text(text)) => Ok(text),
                     yasnippet_parser::SnippetPart::Template(TemplateMarker { key }) => slots
-                        .get(&key)
-                        .map(|v| *v)
+                        .get(key)
+                        .copied()
                         .ok_or_else(|| eyre::eyre!("no value for key [${key}] found")),
                 }
             })
