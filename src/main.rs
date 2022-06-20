@@ -45,10 +45,10 @@ enum Commands {
     /// renders the template onto the terminal
     Fetch {
         /// variables to fill the template with
-        #[clap(short, long)]
+        #[clap(value_parser)]
         values: Vec<String>,
         /// [key:] to find the template by
-        #[clap(short, long)]
+        #[clap(short, long, value_parser)]
         key: String,
     },
 }
