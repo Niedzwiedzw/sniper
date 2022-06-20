@@ -24,3 +24,5 @@ SUBCOMMANDS:
     fetch    renders the template onto the terminal
     help     Print this message or the help of the given subcommand(s)
 ```
+## Troubleshooting
+The parser doesn't support full YASnippet syntax. Got a snippet that doesn't work? Contribute it to `./test_data` directory via a pull request and the support will be added.
