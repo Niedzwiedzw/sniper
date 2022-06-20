@@ -5,6 +5,11 @@ use std::{
         PathBuf,
     },
 };
+use tracing_subscriber::{
+    fmt,
+    prelude::__tracing_subscriber_SubscriberExt,
+    EnvFilter,
+};
 
 use clap::{
     Parser,
@@ -13,6 +18,18 @@ use clap::{
 use eyre::{
     Result,
     WrapErr,
+};
+
+use itertools::Itertools;
+
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+use yasnippet_parser::{
+    Snippet,
+    TemplateMarker,
 };
 
 /// CLI code snippet manager inspired by YASNippet.
@@ -54,17 +71,6 @@ fn config_dir() -> Result<PathBuf> {
     make_sure_dir_exists(&config_dir)?;
     Ok(config_dir)
 }
-use itertools::Itertools;
-
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-use yasnippet_parser::{
-    Snippet,
-    TemplateMarker,
-};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SniperConfig {
@@ -421,11 +427,6 @@ impl Sniper {
             .wrap_err_with(|| format!("rendering snippet for key [{key}] and values [{values:?}]"))
     }
 }
-use tracing_subscriber::{
-    fmt,
-    prelude::__tracing_subscriber_SubscriberExt,
-    EnvFilter,
-};
 fn main() -> Result<()> {
     let logs_dir = config_dir()?.join("log");
     let file_appender = tracing_appender::rolling::daily(&logs_dir, "log");
