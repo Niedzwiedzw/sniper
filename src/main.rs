@@ -14,8 +14,11 @@ use eyre::{
     Result,
     WrapErr,
 };
+
+/// CLI code snippet manager inspired by YASNippet.
+/// Config resides in ~/.config/sniper, and is generated on first launch
 #[derive(Parser)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version)]
 struct Cli {
     #[clap(subcommand)]
     command: Commands,
